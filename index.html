@@ -1,96 +1,147 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Practice Studio</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #1a1a1a; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-        .card { background: #2d2d2d; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); text-align: center; width: 90%; max-width: 900px; }
-        .video-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
-        video { width: 100%; border-radius: 10px; background: #000; border: 2px solid #444; }
-        .btn { padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 50px; border: none; transition: 0.3s; font-weight: bold; }
-        #startBtn { background: #28a745; color: white; }
-        #stopBtn { background: #dc3545; color: white; display: none; }
-        #countdown { position: absolute; font-size: 100px; color: #ffc107; z-index: 10; pointer-events: none; top: 40%; left: 50%; transform: translate(-50%, -50%); display: none; }
-        input[type="file"] { margin-bottom: 20px; color: #ccc; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #121212; color: #e0e0e0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .container { width: 100%; max-width: 1000px; text-align: center; }
+        .video-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin: 20px 0; position: relative; }
+        video { width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 12px; border: 1px solid #333; object-fit: cover; }
+        .controls { background: #1e1e1e; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+        button { padding: 12px 24px; font-size: 16px; font-weight: 600; border-radius: 8px; border: none; cursor: pointer; margin: 5px; transition: 0.2s; }
+        #setupBtn { background: #3700b3; color: white; }
+        #startBtn { background: #03dac6; color: #000; display: none; }
+        #stopBtn { background: #cf6679; color: white; display: none; }
+        #countdown { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 120px; color: #fff; font-weight: bold; z-index: 100; pointer-events: none; text-shadow: 0 0 20px rgba(0,0,0,0.8); display: none; }
+        input[type="file"] { margin-bottom: 15px; }
+        .status-msg { margin-top: 10px; font-size: 14px; color: #bb86fc; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2>Student Duet Recorder</h2>
-    <p>Upload your reference video, then press Start.</p>
+<div class="container">
+    <h2>Video Practice Studio</h2>
     
-    <input type="file" id="upload" accept="video/*">
-    
-    <div style="position: relative;">
+    <div class="controls">
+        <p>1. Upload the reference video:</p>
+        <input type="file" id="upload" accept="video/*">
+        <br>
+        <button id="setupBtn">Enable Camera & Mic</button>
+        <button id="startBtn">Start Recording (3s Count)</button>
+        <button id="stopBtn">Stop & Finish</button>
+        <div id="status" class="status-msg">Waiting for setup...</div>
+    </div>
+
+    <div class="video-grid">
         <div id="countdown">3</div>
-        <div class="video-grid">
+        <div>
+            <small>Reference Video</small>
             <video id="refVideo"></video>
+        </div>
+        <div>
+            <small>Your Preview</small>
             <video id="webcam" autoplay muted playsinline></video>
         </div>
     </div>
-
-    <button id="startBtn" class="btn">Start Recording</button>
-    <button id="stopBtn" class="btn">Stop & Download</button>
 </div>
 
 <script>
     const refVideo = document.getElementById('refVideo');
     const webcam = document.getElementById('webcam');
+    const setupBtn = document.getElementById('setupBtn');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const countdownEl = document.getElementById('countdown');
+    const status = document.getElementById('status');
 
     let recorder;
     let chunks = [];
+    let activeStream = null;
 
+    // Handle reference video upload
     document.getElementById('upload').onchange = (e) => {
-        refVideo.src = URL.createObjectURL(e.target.files[0]);
-    };
-
-    startBtn.onclick = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            webcam.srcObject = stream;
-            
-            startBtn.style.display = 'none';
-            let count = 3;
-            countdownEl.style.display = 'block';
-            countdownEl.innerText = count;
-
-            const timer = setInterval(() => {
-                count--;
-                if (count > 0) {
-                    countdownEl.innerText = count;
-                } else {
-                    clearInterval(timer);
-                    countdownEl.style.display = 'none';
-                    
-                    chunks = [];
-                    recorder = new MediaRecorder(stream);
-                    recorder.ondataavailable = e => chunks.push(e.data);
-                    recorder.onstop = () => {
-                        const blob = new Blob(chunks, { type: 'video/webm' });
-                        const a = document.createElement('a');
-                        a.href = URL.createObjectURL(blob);
-                        a.download = "my_practice_session.webm";
-                        a.click();
-                    };
-                    recorder.start();
-                    refVideo.play();
-                    stopBtn.style.display = 'inline-block';
-                }
-            }, 1000);
-        } catch (e) {
-            alert("Camera access denied. Please check your browser settings.");
+        const file = e.target.files[0];
+        if (file) {
+            refVideo.src = URL.createObjectURL(file);
+            status.innerText = "Video loaded. Now enable your camera.";
         }
     };
+
+    // Step 1: Just turn on the camera (No recording)
+    setupBtn.onclick = async () => {
+        try {
+            activeStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 1280, height: 720 }, 
+                audio: true 
+            });
+            webcam.srcObject = activeStream;
+            setupBtn.style.display = 'none';
+            startBtn.style.display = 'inline-block';
+            status.innerText = "Ready to record!";
+        } catch (e) {
+            alert("Camera access denied.");
+            status.innerText = "Error: Camera access required.";
+        }
+    };
+
+    // Step 2: Start the countdown and then record
+    startBtn.onclick = () => {
+        if (!refVideo.src) {
+            alert("Please upload a reference video first.");
+            return;
+        }
+
+        startBtn.style.display = 'none';
+        let count = 3;
+        countdownEl.innerText = count;
+        countdownEl.style.display = 'block';
+
+        const timer = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownEl.innerText = count;
+            } else {
+                clearInterval(timer);
+                countdownEl.style.display = 'none';
+                startRecording();
+            }
+        }, 1000);
+    };
+
+    function startRecording() {
+        chunks = [];
+        
+        // Use a more standard container if available
+        const options = { mimeType: 'video/webm;codecs=vp8,opus' };
+        recorder = new MediaRecorder(activeStream, options);
+
+        recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+        
+        recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            // Naming it .mkv often helps some players recognize the stream better
+            a.download = `practice_session_${Date.now()}.webm`;
+            a.click();
+            status.innerText = "Recording saved to your computer.";
+        };
+
+        recorder.start();
+        refVideo.play();
+        stopBtn.style.display = 'inline-block';
+        status.innerText = "RECORDING NOW...";
+    }
 
     stopBtn.onclick = () => {
         recorder.stop();
         refVideo.pause();
         stopBtn.style.display = 'none';
         startBtn.style.display = 'inline-block';
+        status.innerText = "Stopped. Saving file...";
     };
 </script>
 </body>
